@@ -1,42 +1,148 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Send, Plus, Trash2, Settings2 } from 'lucide-react'
+import { Send, ChevronDown, Check, Sparkles } from 'lucide-react'
 import { useChatStore } from '@/stores/chat'
 import { useProvidersStore } from '@/stores/settings'
 import { MessageItem } from './MessageItem'
-import { ProviderSelector } from './ProviderSelector'
+import { TEXT_PROVIDERS, Provider } from '@/lib/providers/registry'
+import { ProviderBadge } from '@/components/ProviderBadge'
 import { getMockTextResponse, streamMockText } from '@/lib/mock/responses'
 import { cn } from '@/lib/utils'
 
+function ModelPicker({
+  selectedProvider,
+  selectedModel,
+  onProviderChange,
+  onModelChange,
+}: {
+  selectedProvider: string
+  selectedModel: string
+  onProviderChange: (id: string) => void
+  onModelChange: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const { isAvailable, loaded } = useProvidersStore()
+  const provider = TEXT_PROVIDERS.find(p => p.id === selectedProvider) ?? TEXT_PROVIDERS[0]
+  const model = provider.models.find(m => m.id === selectedModel) ?? provider.models[0]
+
+  const handleSelect = (p: Provider, m?: string) => {
+    onProviderChange(p.id)
+    onModelChange(m || p.models[0].id)
+    if (m) setOpen(false)
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2.5 bg-white/5 hover:bg-white/8 border border-white/10 rounded-xl px-3.5 py-2.5 transition-all"
+      >
+        <ProviderBadge provider={provider} size="sm" />
+        <div className="text-left">
+          <p className="text-sm font-medium text-white leading-none">{provider.name}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">{model.name}</p>
+        </div>
+        <ChevronDown className={cn('w-4 h-4 text-gray-400 transition-transform ml-1', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 mt-2 w-80 bg-[#141418] border border-white/10 rounded-2xl shadow-2xl z-20 overflow-hidden">
+            <div className="p-2 border-b border-white/5">
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider px-2 py-1">Choisir une IA</p>
+            </div>
+            <div className="max-h-[420px] overflow-y-auto p-1.5">
+              {TEXT_PROVIDERS.map(p => {
+                const isSelected = p.id === selectedProvider
+                const available = loaded && isAvailable(p.id)
+                return (
+                  <div key={p.id}>
+                    <button
+                      onClick={() => handleSelect(p)}
+                      className={cn(
+                        'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all',
+                        isSelected ? 'bg-violet-600/15' : 'hover:bg-white/5'
+                      )}
+                    >
+                      <ProviderBadge provider={p} size="sm" />
+                      <div className="flex-1 text-left min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-white">{p.name}</p>
+                          {!available && loaded && (
+                            <span className="text-[9px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-full">demo</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-gray-500 truncate">{p.description}</p>
+                      </div>
+                      {isSelected && <Check className="w-4 h-4 text-violet-400 flex-shrink-0" />}
+                    </button>
+
+                    {/* Model sub-list */}
+                    {isSelected && (
+                      <div className="ml-9 mr-2 mb-1 mt-0.5 space-y-0.5">
+                        {p.models.map(m => (
+                          <button
+                            key={m.id}
+                            onClick={() => handleSelect(p, m.id)}
+                            className={cn(
+                              'w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-left transition-all',
+                              m.id === selectedModel
+                                ? 'bg-violet-500/10 text-violet-300'
+                                : 'hover:bg-white/5 text-gray-400 hover:text-gray-200'
+                            )}
+                          >
+                            <span className="text-xs">{m.name}</span>
+                            {m.id === selectedModel && <Check className="w-3 h-3 text-violet-400" />}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+const SUGGESTIONS = [
+  'Explique-moi le machine learning simplement',
+  'Ecris un poeme sur la technologie',
+  'Quelles sont les tendances IA en 2025 ?',
+  'Aide-moi a rediger un email professionnel',
+]
+
 export function ChatInterface() {
   const [input, setInput] = useState('')
-  const [showSystemPrompt, setShowSystemPrompt] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const {
-    conversations,
     activeConversationId,
     selectedProvider,
     selectedModel,
     isLoading,
     systemPrompt,
     createConversation,
-    setActiveConversation,
     addMessage,
     updateMessage,
     setMessageStreaming,
     setSelectedProvider,
     setSelectedModel,
     setLoading,
-    setSystemPrompt,
-    deleteConversation,
     getActiveConversation,
   } = useChatStore()
 
   const { isAvailable, fetchProviders, loaded } = useProvidersStore()
   const activeConversation = getActiveConversation()
+
+  // Only show this chat interface if active conversation is chat category or no conversation
+  const showChat = !activeConversation || activeConversation.category === 'chat'
 
   useEffect(() => {
     if (!loaded) fetchProviders()
@@ -46,15 +152,15 @@ export function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [activeConversation?.messages])
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return
+  const handleSend = async (text?: string) => {
+    const userContent = (text || input).trim()
+    if (!userContent || isLoading) return
 
     let convId = activeConversationId
-    if (!convId) {
-      convId = createConversation()
+    if (!convId || !showChat) {
+      convId = createConversation('chat')
     }
 
-    const userContent = input.trim()
     setInput('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
@@ -79,7 +185,6 @@ export function ChatInterface() {
       const providerReady = isAvailable(selectedProvider)
 
       if (!providerReady) {
-        // Demo mode — provider not configured server-side
         const mockResponse = getMockTextResponse(selectedProvider)
         let accumulated = ''
         for await (const chunk of streamMockText(mockResponse)) {
@@ -87,11 +192,11 @@ export function ChatInterface() {
           updateMessage(convId, assistantId, accumulated)
         }
       } else {
-        // Real API call via our server proxy
-        const allMessages = (activeConversation?.messages || [])
-          .filter(m => !m.isStreaming && m.content)
+        // Get all previous messages from the active conversation
+        const conv = useChatStore.getState().conversations.find(c => c.id === convId)
+        const allMessages = (conv?.messages || [])
+          .filter(m => !m.isStreaming && m.content && m.role !== 'system')
           .map(m => ({ role: m.role, content: m.content }))
-        allMessages.push({ role: 'user', content: userContent })
 
         const res = await fetch('/api/chat', {
           method: 'POST',
@@ -111,7 +216,6 @@ export function ChatInterface() {
           throw new Error(err.error || `Erreur ${res.status}`)
         }
 
-        // Check if streaming response
         const contentType = res.headers.get('content-type') || ''
         if (contentType.includes('text/event-stream')) {
           const reader = res.body?.getReader()
@@ -123,8 +227,7 @@ export function ChatInterface() {
               const { done, value } = await reader.read()
               if (done) break
               const chunk = decoder.decode(value, { stream: true })
-              const lines = chunk.split('\n')
-              for (const line of lines) {
+              for (const line of chunk.split('\n')) {
                 if (line.startsWith('data: ')) {
                   const data = line.slice(6)
                   if (data === '[DONE]') continue
@@ -133,13 +236,12 @@ export function ChatInterface() {
                     const content = json.choices?.[0]?.delta?.content ?? ''
                     accumulated += content
                     updateMessage(convId, assistantId, accumulated)
-                  } catch { /* skip malformed chunks */ }
+                  } catch { /* skip */ }
                 }
               }
             }
           }
         } else {
-          // Non-streaming JSON response
           const data = await res.json()
           updateMessage(convId, assistantId, data.content || JSON.stringify(data))
         }
@@ -165,146 +267,82 @@ export function ChatInterface() {
     e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px'
   }
 
-  const providerActive = isAvailable(selectedProvider)
+  const hasMessages = showChat && activeConversation && activeConversation.messages.length > 0
 
   return (
-    <div className="flex h-screen">
-      {/* Conversations sidebar */}
-      <div className="w-52 flex-shrink-0 bg-[#111] border-r border-white/5 flex flex-col">
-        <div className="p-3 border-b border-white/5">
-          <button
-            onClick={() => { createConversation() }}
-            className="w-full flex items-center gap-2 bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/20 text-violet-300 rounded-lg px-3 py-2 text-sm transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            Nouveau chat
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {conversations.length === 0 && (
-            <p className="text-xs text-gray-600 text-center mt-4 px-2">Commencez une conversation</p>
-          )}
-          {conversations.map(conv => (
-            <div
-              key={conv.id}
-              className={cn(
-                'group flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer transition-all',
-                conv.id === activeConversationId
-                  ? 'bg-white/10 text-white'
-                  : 'text-gray-400 hover:bg-white/5 hover:text-white'
-              )}
-              onClick={() => setActiveConversation(conv.id)}
-            >
-              <span className="flex-1 text-xs truncate">{conv.title}</span>
-              <button
-                onClick={e => { e.stopPropagation(); deleteConversation(conv.id) }}
-                className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-400 transition-all"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Main chat */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#0d0d0d]">
-          <ProviderSelector
+    <div className="flex flex-col h-screen">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-white/5 bg-[#0d0d0d]/80 backdrop-blur-sm">
+        <div className="md:ml-0 ml-12">
+          <ModelPicker
             selectedProvider={selectedProvider}
             selectedModel={selectedModel}
             onProviderChange={setSelectedProvider}
             onModelChange={setSelectedModel}
           />
-          <div className="flex items-center gap-2">
-            {!providerActive && loaded && (
-              <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg">
-                Demo
-              </span>
-            )}
-            <button
-              onClick={() => setShowSystemPrompt(!showSystemPrompt)}
-              className={cn(
-                'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-all',
-                showSystemPrompt
-                  ? 'bg-white/10 border-white/20 text-white'
-                  : 'border-white/10 text-gray-500 hover:text-white hover:border-white/20'
-              )}
-            >
-              <Settings2 className="w-3.5 h-3.5" />
-              Systeme
-            </button>
-          </div>
         </div>
+      </div>
 
-        {/* System prompt */}
-        {showSystemPrompt && (
-          <div className="px-4 py-2 border-b border-white/5 bg-black/20">
-            <textarea
-              value={systemPrompt}
-              onChange={e => setSystemPrompt(e.target.value)}
-              placeholder="Prompt systeme (ex : Tu es un expert en Python. Reponds toujours en francais.)"
-              className="w-full bg-transparent text-xs text-gray-300 placeholder-gray-600 resize-none focus:outline-none"
-              rows={2}
-            />
+      {/* Messages or Welcome */}
+      <div className="flex-1 overflow-y-auto">
+        {!hasMessages ? (
+          /* Welcome screen */
+          <div className="h-full flex flex-col items-center justify-center px-6 pb-20">
+            <div className="w-16 h-16 bg-gradient-to-br from-violet-500/20 to-cyan-500/20 border border-white/10 rounded-2xl flex items-center justify-center mb-6">
+              <Sparkles className="w-7 h-7 text-violet-400" />
+            </div>
+            <h1 className="text-2xl font-bold text-white mb-2">Bonjour !</h1>
+            <p className="text-sm text-gray-500 max-w-md text-center mb-8">
+              Choisissez une IA ci-dessus et posez votre question.
+              Vous pouvez changer d'IA a tout moment.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg w-full">
+              {SUGGESTIONS.map(s => (
+                <button
+                  key={s}
+                  onClick={() => handleSend(s)}
+                  className="text-left text-sm text-gray-400 bg-white/5 hover:bg-white/8 border border-white/5 hover:border-violet-500/20 rounded-xl px-4 py-3 transition-all"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          /* Messages */
+          <div className="max-w-3xl mx-auto px-4 md:px-6 py-6 space-y-6">
+            {activeConversation!.messages.map(msg => (
+              <MessageItem key={msg.id} message={msg} />
+            ))}
+            <div ref={messagesEndRef} />
           </div>
         )}
+      </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-          {!activeConversation || activeConversation.messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-violet-500/20 to-cyan-500/20 border border-white/10 rounded-2xl flex items-center justify-center mb-4">
-                <span className="text-2xl">&#10022;</span>
-              </div>
-              <h2 className="text-lg font-semibold text-white mb-1">Que voulez-vous faire ?</h2>
-              <p className="text-sm text-gray-500 max-w-sm">
-                Selectionnez un provider ci-dessus et commencez a ecrire.
-              </p>
-              <div className="grid grid-cols-2 gap-2 mt-6 max-w-md">
-                {[
-                  'Explique le machine learning simplement',
-                  'Ecris un composant React en TypeScript',
-                  'Resume les actualites IA du moment',
-                  'Traduis ce texte en anglais',
-                ].map(suggestion => (
-                  <button
-                    key={suggestion}
-                    onClick={() => setInput(suggestion)}
-                    className="text-left text-xs text-gray-400 bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg px-3 py-2.5 transition-all"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            activeConversation.messages.map(msg => (
-              <MessageItem key={msg.id} message={msg} />
-            ))
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input */}
-        <div className="px-4 py-4 border-t border-white/5 bg-[#0d0d0d]">
-          <div className="flex items-end gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 focus-within:border-violet-500/50 transition-all">
+      {/* Input area */}
+      <div className="border-t border-white/5 bg-[#0d0d0d]">
+        <div className="max-w-3xl mx-auto px-4 md:px-6 py-4">
+          <div className="flex items-end gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 focus-within:border-violet-500/40 transition-all">
             <textarea
               ref={textareaRef}
               value={input}
               onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
-              placeholder="Ecrivez votre message... (Entree pour envoyer, Maj+Entree pour sauter une ligne)"
+              placeholder="Posez votre question..."
               className="flex-1 bg-transparent text-sm text-white placeholder-gray-600 resize-none focus:outline-none min-h-[24px] max-h-[200px]"
               rows={1}
             />
             <button
-              onClick={handleSend}
+              onClick={() => handleSend()}
               disabled={!input.trim() || isLoading}
-              className="w-8 h-8 bg-violet-600 hover:bg-violet-500 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+              className={cn(
+                'w-9 h-9 rounded-xl flex items-center justify-center transition-all flex-shrink-0',
+                input.trim() && !isLoading
+                  ? 'bg-violet-600 hover:bg-violet-500 text-white'
+                  : 'bg-white/5 text-gray-600 cursor-not-allowed'
+              )}
             >
-              <Send className="w-3.5 h-3.5 text-white" />
+              <Send className="w-4 h-4" />
             </button>
           </div>
         </div>
