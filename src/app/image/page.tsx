@@ -1,15 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Sparkles, Download, Copy, ChevronDown, Check, Wand2 } from 'lucide-react'
 import { IMAGE_PROVIDERS, Provider } from '@/lib/providers/registry'
 import { ProviderBadge } from '@/components/ProviderBadge'
-import { useSettingsStore } from '@/stores/settings'
+import { useProvidersStore } from '@/stores/settings'
 import { getMockImageUrl } from '@/lib/mock/responses'
 import { cn } from '@/lib/utils'
 
-const SIZES = ['1024×1024', '1792×1024', '1024×1792', '512×512']
-const STYLES = ['Photoréaliste', 'Illustration', 'Peinture', 'Anime', 'Concept art', '3D render', 'Sketch']
+const SIZES = ['1024x1024', '1792x1024', '1024x1792', '512x512']
+const STYLES = ['Photorealiste', 'Illustration', 'Peinture', 'Anime', 'Concept art', '3D render', 'Sketch']
 
 interface GeneratedImage {
   url: string
@@ -23,6 +23,7 @@ interface GeneratedImage {
 function ProviderPicker({ selected, onSelect }: { selected: Provider; onSelect: (p: Provider) => void }) {
   const [open, setOpen] = useState(false)
   const [selectedModel, setSelectedModel] = useState(selected.models[0].id)
+  const { isAvailable, loaded } = useProvidersStore()
 
   return (
     <div className="relative">
@@ -56,6 +57,9 @@ function ProviderPicker({ selected, onSelect }: { selected: Provider; onSelect: 
                   <p className="text-sm font-medium text-white">{p.name}</p>
                   <p className="text-[10px] text-gray-500">{p.description}</p>
                 </div>
+                {loaded && isAvailable(p.id) && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                )}
                 {p.id === selected.id && <Check className="w-3.5 h-3.5 text-violet-400" />}
               </button>
             ))}
@@ -76,24 +80,66 @@ export default function ImagePage() {
   const [count, setCount] = useState(1)
   const [isGenerating, setIsGenerating] = useState(false)
   const [images, setImages] = useState<GeneratedImage[]>([])
-  const { apiKeys } = useSettingsStore()
+  const { isAvailable, fetchProviders, loaded } = useProvidersStore()
+
+  useEffect(() => {
+    if (!loaded) fetchProviders()
+  }, [loaded, fetchProviders])
 
   const handleGenerate = async () => {
     if (!prompt.trim() || isGenerating) return
     setIsGenerating(true)
 
-    await new Promise(r => setTimeout(r, 1500 + Math.random() * 1000))
+    const fullPrompt = selectedStyle ? `${prompt.trim()}, style ${selectedStyle}` : prompt.trim()
+    const providerReady = isAvailable(selectedProvider.id)
 
-    const newImages: GeneratedImage[] = Array.from({ length: count }, () => ({
-      url: getMockImageUrl(),
-      prompt: prompt.trim(),
-      provider: selectedProvider.name,
-      model: selectedModel,
-      size: selectedSize,
-      timestamp: new Date(),
-    }))
+    if (!providerReady) {
+      // Demo mode
+      await new Promise(r => setTimeout(r, 1500 + Math.random() * 1000))
+      const newImages: GeneratedImage[] = Array.from({ length: count }, () => ({
+        url: getMockImageUrl(),
+        prompt: fullPrompt,
+        provider: selectedProvider.name,
+        model: selectedModel,
+        size: selectedSize,
+        timestamp: new Date(),
+      }))
+      setImages(prev => [...newImages, ...prev])
+    } else {
+      try {
+        const res = await fetch('/api/image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: selectedProvider.id,
+            model: selectedModel,
+            prompt: fullPrompt,
+            negativePrompt: negativePrompt || undefined,
+            size: selectedSize,
+            count,
+          }),
+        })
 
-    setImages(prev => [...newImages, ...prev])
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }))
+          throw new Error(err.error || `Erreur ${res.status}`)
+        }
+
+        const data = await res.json()
+        const newImages: GeneratedImage[] = (data.images || []).map((img: { url?: string; b64?: string }) => ({
+          url: img.url || (img.b64 ? `data:image/png;base64,${img.b64}` : getMockImageUrl()),
+          prompt: fullPrompt,
+          provider: selectedProvider.name,
+          model: selectedModel,
+          size: selectedSize,
+          timestamp: new Date(),
+        }))
+        setImages(prev => [...newImages, ...prev])
+      } catch (err) {
+        console.error('Image generation error:', err)
+      }
+    }
+
     setIsGenerating(false)
   }
 
@@ -102,7 +148,7 @@ export default function ImagePage() {
       {/* Left panel - controls */}
       <div className="w-72 flex-shrink-0 bg-[#111] border-r border-white/5 flex flex-col overflow-y-auto">
         <div className="p-4 border-b border-white/5">
-          <h1 className="text-sm font-bold text-white">Génération d'images</h1>
+          <h1 className="text-sm font-bold text-white">Generation d'images</h1>
           <p className="text-xs text-gray-500 mt-0.5">9 providers disponibles</p>
         </div>
 
@@ -115,7 +161,7 @@ export default function ImagePage() {
 
           {/* Model */}
           <div>
-            <label className="text-xs text-gray-500 mb-2 block uppercase tracking-wide">Modèle</label>
+            <label className="text-xs text-gray-500 mb-2 block uppercase tracking-wide">Modele</label>
             <div className="space-y-1">
               {selectedProvider.models.map(m => (
                 <button
@@ -205,13 +251,20 @@ export default function ImagePage() {
 
       {/* Right panel - main */}
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Demo badge */}
+        {loaded && !isAvailable(selectedProvider.id) && (
+          <div className="px-4 py-2 bg-amber-500/5 border-b border-amber-500/20 text-center">
+            <span className="text-xs text-amber-400">Mode demo — resultats simules</span>
+          </div>
+        )}
+
         {/* Prompt area */}
         <div className="p-4 border-b border-white/5 space-y-3">
           <div className="bg-white/5 border border-white/10 rounded-xl p-3 focus-within:border-violet-500/50 transition-all">
             <textarea
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
-              placeholder="Décrivez l'image que vous souhaitez générer… Ex : Un dragon volant au-dessus d'une forêt enchantée au coucher du soleil, style fantasy épique"
+              placeholder="Decrivez l'image que vous souhaitez generer... Ex : Un dragon volant au-dessus d'une foret enchantee au coucher du soleil"
               className="w-full bg-transparent text-sm text-white placeholder-gray-600 resize-none focus:outline-none min-h-[72px]"
               rows={3}
             />
@@ -220,7 +273,7 @@ export default function ImagePage() {
             <input
               value={negativePrompt}
               onChange={e => setNegativePrompt(e.target.value)}
-              placeholder="Négatif (ce que vous ne voulez pas)"
+              placeholder="Negatif (ce que vous ne voulez pas)"
               className="flex-1 bg-white/5 border border-white/5 rounded-lg px-3 py-2 text-xs text-gray-400 placeholder-gray-700 focus:outline-none focus:border-white/20 transition-all"
             />
             <button
@@ -231,12 +284,12 @@ export default function ImagePage() {
               {isGenerating ? (
                 <>
                   <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Génération…
+                  Generation...
                 </>
               ) : (
                 <>
                   <Wand2 className="w-3.5 h-3.5" />
-                  Générer
+                  Generer
                 </>
               )}
             </button>
@@ -250,11 +303,9 @@ export default function ImagePage() {
               <div className="w-16 h-16 bg-gradient-to-br from-pink-500/20 to-violet-500/20 border border-white/10 rounded-2xl flex items-center justify-center mb-4">
                 <Sparkles className="w-7 h-7 text-pink-400" />
               </div>
-              <h2 className="text-base font-semibold text-white mb-1">Prêt à générer</h2>
+              <h2 className="text-base font-semibold text-white mb-1">Pret a generer</h2>
               <p className="text-sm text-gray-500 max-w-sm">
-                Décrivez votre image ci-dessus et cliquez sur Générer.
-                <br />
-                <span className="text-gray-600">Mode démo — résultats simulés.</span>
+                Decrivez votre image ci-dessus et cliquez sur Generer.
               </p>
             </div>
           ) : (
@@ -270,7 +321,7 @@ export default function ImagePage() {
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-between p-3">
                     <p className="text-xs text-white line-clamp-3">{img.prompt}</p>
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-gray-400">{img.provider} · {img.size}</span>
+                      <span className="text-[10px] text-gray-400">{img.provider} - {img.size}</span>
                       <div className="flex gap-1.5">
                         <button className="w-7 h-7 bg-white/10 hover:bg-white/20 rounded-lg flex items-center justify-center transition-all">
                           <Copy className="w-3 h-3 text-white" />

@@ -1,18 +1,19 @@
 'use client'
 
-import { useState } from 'react'
-import { Play, Download, Mic, Volume2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Play, Pause, Download, Mic, Volume2 } from 'lucide-react'
 import { AUDIO_PROVIDERS } from '@/lib/providers/registry'
 import { ProviderBadge } from '@/components/ProviderBadge'
+import { useProvidersStore } from '@/stores/settings'
 import { cn } from '@/lib/utils'
 
 const VOICES_ELEVENLABS = ['Rachel', 'Drew', 'Clyde', 'Paul', 'Domi', 'Dave', 'Fin', 'Sarah', 'Antoni', 'Thomas']
 const VOICES_OPENAI = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']
 
 const SAMPLE_TEXTS = [
-  "Bonjour, je suis une voix générée par intelligence artificielle. La synthèse vocale moderne permet de créer des voix naturelles et expressives.",
+  "Bonjour, je suis une voix generee par intelligence artificielle. La synthese vocale moderne permet de creer des voix naturelles et expressives.",
   "Welcome to AI Hub. This is a demonstration of text-to-speech capabilities powered by state-of-the-art AI models.",
-  "Les modèles de synthèse vocale actuels atteignent un niveau de réalisme remarquable, capable de transmettre des émotions et des nuances.",
+  "Les modeles de synthese vocale actuels atteignent un niveau de realisme remarquable, capable de transmettre des emotions et des nuances.",
 ]
 
 export default function AudioPage() {
@@ -23,31 +24,88 @@ export default function AudioPage() {
   const [speed, setSpeed] = useState(1.0)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [generated, setGenerated] = useState(false)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const { isAvailable, fetchProviders, loaded } = useProvidersStore()
+
+  useEffect(() => {
+    if (!loaded) fetchProviders()
+  }, [loaded, fetchProviders])
 
   const voices = selectedProvider.id === 'elevenlabs' ? VOICES_ELEVENLABS : VOICES_OPENAI
 
   const handleGenerate = async () => {
     if (!text.trim() || isGenerating) return
     setIsGenerating(true)
-    await new Promise(r => setTimeout(r, 1200 + Math.random() * 800))
+    setAudioUrl(null)
+
+    const providerReady = isAvailable(selectedProvider.id)
+
+    if (!providerReady) {
+      // Demo mode
+      await new Promise(r => setTimeout(r, 1200 + Math.random() * 800))
+      setAudioUrl('demo')
+    } else {
+      try {
+        const res = await fetch('/api/audio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: selectedProvider.id,
+            model: selectedModel,
+            text: text.trim(),
+            voice: selectedVoice.toLowerCase(),
+            speed,
+          }),
+        })
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }))
+          throw new Error(err.error || `Erreur ${res.status}`)
+        }
+
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        setAudioUrl(url)
+      } catch (err) {
+        console.error('Audio generation error:', err)
+      }
+    }
+
     setIsGenerating(false)
-    setGenerated(true)
   }
 
   const handlePlay = () => {
-    if (!generated) return
-    setIsPlaying(true)
-    setTimeout(() => setIsPlaying(false), 3000)
+    if (audioUrl === 'demo') {
+      setIsPlaying(true)
+      setTimeout(() => setIsPlaying(false), 3000)
+      return
+    }
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      } else {
+        audioRef.current.play()
+        setIsPlaying(true)
+      }
+    }
   }
 
   return (
     <div className="h-screen overflow-y-auto">
       <div className="max-w-2xl mx-auto p-6">
         <div className="mb-6">
-          <h1 className="text-xl font-bold text-white">Synthèse vocale</h1>
+          <h1 className="text-xl font-bold text-white">Synthese vocale</h1>
           <p className="text-sm text-gray-500 mt-1">Convertissez du texte en audio naturel</p>
         </div>
+
+        {/* Demo badge */}
+        {loaded && !isAvailable(selectedProvider.id) && (
+          <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 mb-5 text-center">
+            <span className="text-xs text-amber-400">Mode demo — le lecteur audio est simule</span>
+          </div>
+        )}
 
         {/* Provider selection */}
         <div className="grid grid-cols-2 gap-3 mb-6">
@@ -58,7 +116,7 @@ export default function AudioPage() {
                 setSelectedProvider(p)
                 setSelectedModel(p.models[0].id)
                 setSelectedVoice(p.id === 'elevenlabs' ? 'Rachel' : 'alloy')
-                setGenerated(false)
+                setAudioUrl(null)
               }}
               className={cn(
                 'flex items-center gap-3 p-4 rounded-xl border transition-all text-left',
@@ -78,12 +136,12 @@ export default function AudioPage() {
 
         {/* Model */}
         <div className="mb-5">
-          <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">Modèle</label>
+          <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">Modele</label>
           <div className="flex gap-2">
             {selectedProvider.models.map(m => (
               <button
                 key={m.id}
-                onClick={() => { setSelectedModel(m.id); setGenerated(false) }}
+                onClick={() => { setSelectedModel(m.id); setAudioUrl(null) }}
                 className={cn(
                   'flex-1 px-3 py-2 rounded-lg border text-sm transition-all',
                   m.id === selectedModel
@@ -105,7 +163,7 @@ export default function AudioPage() {
             {voices.map(v => (
               <button
                 key={v}
-                onClick={() => { setSelectedVoice(v); setGenerated(false) }}
+                onClick={() => { setSelectedVoice(v); setAudioUrl(null) }}
                 className={cn(
                   'flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs transition-all',
                   v === selectedVoice
@@ -124,7 +182,7 @@ export default function AudioPage() {
         <div className="mb-5">
           <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 flex items-center justify-between">
             <span>Vitesse</span>
-            <span className="text-white">{speed.toFixed(1)}×</span>
+            <span className="text-white">{speed.toFixed(1)}x</span>
           </label>
           <input
             type="range"
@@ -136,9 +194,9 @@ export default function AudioPage() {
             className="w-full accent-violet-500"
           />
           <div className="flex justify-between text-[10px] text-gray-600 mt-1">
-            <span>0.5× Lent</span>
-            <span>1.0× Normal</span>
-            <span>2.0× Rapide</span>
+            <span>0.5x Lent</span>
+            <span>1.0x Normal</span>
+            <span>2.0x Rapide</span>
           </div>
         </div>
 
@@ -148,8 +206,8 @@ export default function AudioPage() {
           <div className="bg-white/5 border border-white/10 rounded-xl p-3 focus-within:border-violet-500/50 transition-all">
             <textarea
               value={text}
-              onChange={e => { setText(e.target.value); setGenerated(false) }}
-              placeholder="Entrez le texte à convertir en audio…"
+              onChange={e => { setText(e.target.value); setAudioUrl(null) }}
+              placeholder="Entrez le texte a convertir en audio..."
               className="w-full bg-transparent text-sm text-white placeholder-gray-600 resize-none focus:outline-none min-h-[120px]"
               rows={5}
             />
@@ -158,7 +216,7 @@ export default function AudioPage() {
             {SAMPLE_TEXTS.map((s, i) => (
               <button
                 key={i}
-                onClick={() => { setText(s); setGenerated(false) }}
+                onClick={() => { setText(s); setAudioUrl(null) }}
                 className="text-xs text-gray-600 hover:text-gray-400 underline transition-colors"
               >
                 Exemple {i + 1}
@@ -176,19 +234,27 @@ export default function AudioPage() {
           {isGenerating ? (
             <>
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Génération en cours…
+              Generation en cours...
             </>
           ) : (
             <>
               <Volume2 className="w-4 h-4" />
-              Générer l'audio
+              Generer l'audio
             </>
           )}
         </button>
 
-        {/* Audio player (mock) */}
-        {generated && (
+        {/* Audio player */}
+        {audioUrl && (
           <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+            {audioUrl !== 'demo' && (
+              <audio
+                ref={audioRef}
+                src={audioUrl}
+                onEnded={() => setIsPlaying(false)}
+                className="hidden"
+              />
+            )}
             <div className="flex items-center gap-4">
               <button
                 onClick={handlePlay}
@@ -197,7 +263,11 @@ export default function AudioPage() {
                   isPlaying ? 'bg-violet-600' : 'bg-white/10 hover:bg-white/20'
                 )}
               >
-                <Play className={cn('w-4 h-4 text-white', isPlaying && 'animate-pulse')} />
+                {isPlaying ? (
+                  <Pause className="w-4 h-4 text-white" />
+                ) : (
+                  <Play className="w-4 h-4 text-white" />
+                )}
               </button>
               <div className="flex-1">
                 <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -214,13 +284,16 @@ export default function AudioPage() {
                   <span className="text-[10px] text-gray-600">~{Math.round(text.length / 15)}s</span>
                 </div>
               </div>
-              <button className="w-8 h-8 bg-white/5 hover:bg-white/10 rounded-lg flex items-center justify-center transition-all">
-                <Download className="w-3.5 h-3.5 text-gray-400" />
-              </button>
+              {audioUrl !== 'demo' && (
+                <a
+                  href={audioUrl}
+                  download="audio.mp3"
+                  className="w-8 h-8 bg-white/5 hover:bg-white/10 rounded-lg flex items-center justify-center transition-all"
+                >
+                  <Download className="w-3.5 h-3.5 text-gray-400" />
+                </a>
+              )}
             </div>
-            <p className="text-[10px] text-gray-600 mt-2 text-center">
-              Mode démo — Ajoutez votre clé {selectedProvider.name} dans Paramètres pour générer un vrai fichier audio
-            </p>
           </div>
         )}
       </div>

@@ -2,8 +2,6 @@
 
 import { Message } from '@/stores/chat'
 import { getProvider } from '@/lib/providers/registry'
-import { ProviderBadge } from '@/components/ProviderBadge'
-import { formatDate } from '@/lib/utils'
 import { User } from 'lucide-react'
 
 interface MessageItemProps {
@@ -31,14 +29,13 @@ export function MessageItem({ message }: MessageItemProps) {
   if (isUser) {
     return (
       <div className="flex gap-3 justify-end">
-        <div className="max-w-[75%]">
-          <div className="bg-violet-600/30 border border-violet-500/20 rounded-2xl rounded-tr-sm px-4 py-3">
-            <p className="text-sm text-gray-100 whitespace-pre-wrap">{message.content}</p>
+        <div className="max-w-[80%]">
+          <div className="bg-violet-600/20 border border-violet-500/15 rounded-2xl rounded-tr-md px-4 py-3">
+            <p className="text-sm text-gray-100 whitespace-pre-wrap leading-relaxed">{message.content}</p>
           </div>
-          <p className="text-[10px] text-gray-600 mt-1 text-right">{formatDate(message.timestamp)}</p>
         </div>
-        <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
-          <User className="w-4 h-4 text-gray-400" />
+        <div className="w-7 h-7 bg-violet-600/30 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+          <User className="w-3.5 h-3.5 text-violet-300" />
         </div>
       </div>
     )
@@ -46,27 +43,27 @@ export function MessageItem({ message }: MessageItemProps) {
 
   return (
     <div className="flex gap-3">
-      {provider ? (
-        <ProviderBadge provider={provider} size="sm" className="mt-1 flex-shrink-0" />
-      ) : (
-        <div className="w-6 h-6 mt-1 flex-shrink-0" />
-      )}
+      <div
+        className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-1 text-[9px] font-bold text-white"
+        style={{ backgroundColor: provider?.color || '#6366f1' }}
+      >
+        {provider?.name?.slice(0, 2).toUpperCase() || 'IA'}
+      </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          {provider && <span className="text-[10px] font-medium text-gray-500">{provider.name}</span>}
-          {message.modelId && (
-            <span className="text-[10px] text-gray-600 bg-white/5 px-1.5 py-0.5 rounded">
-              {message.modelId.split('/').pop()?.split('-').slice(0, 2).join('-')}
-            </span>
-          )}
-          <span className="text-[10px] text-gray-600">{formatDate(message.timestamp)}</span>
-        </div>
+        {provider && (
+          <p className="text-[11px] text-gray-500 mb-1 font-medium">
+            {provider.name}
+            {message.modelId && (
+              <span className="text-gray-600 font-normal"> · {message.modelId.split('/').pop()?.split('-').slice(0, 3).join('-')}</span>
+            )}
+          </p>
+        )}
         <div className="text-sm text-gray-200 leading-relaxed">
           {message.isStreaming && message.content === '' ? (
-            <div className="flex gap-1 items-center py-1">
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            <div className="flex gap-1.5 items-center py-2">
+              <span className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
           ) : (
             <div

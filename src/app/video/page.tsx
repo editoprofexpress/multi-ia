@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-import { Video, Upload, Wand2, Film } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Video, Upload, Film } from 'lucide-react'
 import { VIDEO_PROVIDERS } from '@/lib/providers/registry'
 import { ProviderBadge } from '@/components/ProviderBadge'
+import { useProvidersStore } from '@/stores/settings'
 import { cn } from '@/lib/utils'
 
 const DURATIONS = ['5s', '10s']
@@ -16,23 +17,66 @@ export default function VideoPage() {
   const [duration, setDuration] = useState('5s')
   const [ratio, setRatio] = useState('16:9')
   const [isGenerating, setIsGenerating] = useState(false)
-  const [generated, setGenerated] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+  const { isAvailable, fetchProviders, loaded } = useProvidersStore()
+
+  useEffect(() => {
+    if (!loaded) fetchProviders()
+  }, [loaded, fetchProviders])
 
   const handleGenerate = async () => {
     if (!prompt.trim() || isGenerating) return
     setIsGenerating(true)
-    await new Promise(r => setTimeout(r, 2000 + Math.random() * 1500))
+    setResult(null)
+
+    const providerReady = isAvailable(selectedProvider.id)
+
+    if (!providerReady) {
+      await new Promise(r => setTimeout(r, 2000 + Math.random() * 1500))
+      setResult('demo')
+    } else {
+      try {
+        const res = await fetch('/api/video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: selectedProvider.id,
+            model: selectedModel,
+            prompt: prompt.trim(),
+            duration: parseInt(duration),
+            ratio,
+          }),
+        })
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }))
+          throw new Error(err.error || `Erreur ${res.status}`)
+        }
+
+        const data = await res.json()
+        setResult(data.id ? `Generation lancee ! Task ID: ${data.id}` : JSON.stringify(data))
+      } catch (err) {
+        setResult(`Erreur: ${err instanceof Error ? err.message : 'Inconnue'}`)
+      }
+    }
+
     setIsGenerating(false)
-    setGenerated(true)
   }
 
   return (
     <div className="h-screen overflow-y-auto">
       <div className="max-w-2xl mx-auto p-6">
         <div className="mb-6">
-          <h1 className="text-xl font-bold text-white">Génération vidéo</h1>
-          <p className="text-sm text-gray-500 mt-1">Texte ou image → vidéo IA</p>
+          <h1 className="text-xl font-bold text-white">Generation video</h1>
+          <p className="text-sm text-gray-500 mt-1">Texte ou image vers video IA</p>
         </div>
+
+        {/* Demo badge */}
+        {loaded && !isAvailable(selectedProvider.id) && (
+          <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 mb-5 text-center">
+            <span className="text-xs text-amber-400">Mode demo — generation simulee</span>
+          </div>
+        )}
 
         {/* Provider selection */}
         <div className="grid grid-cols-2 gap-3 mb-6">
@@ -42,7 +86,7 @@ export default function VideoPage() {
               onClick={() => {
                 setSelectedProvider(p)
                 setSelectedModel(p.models[0].id)
-                setGenerated(false)
+                setResult(null)
               }}
               className={cn(
                 'flex items-center gap-3 p-4 rounded-xl border transition-all text-left',
@@ -62,12 +106,12 @@ export default function VideoPage() {
 
         {/* Model */}
         <div className="mb-5">
-          <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">Modèle</label>
+          <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">Modele</label>
           <div className="flex gap-2">
             {selectedProvider.models.map(m => (
               <button
                 key={m.id}
-                onClick={() => { setSelectedModel(m.id); setGenerated(false) }}
+                onClick={() => { setSelectedModel(m.id); setResult(null) }}
                 className={cn(
                   'flex-1 px-3 py-2.5 rounded-lg border text-sm transition-all',
                   m.id === selectedModel
@@ -85,7 +129,7 @@ export default function VideoPage() {
         {/* Settings */}
         <div className="grid grid-cols-2 gap-4 mb-5">
           <div>
-            <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">Durée</label>
+            <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">Duree</label>
             <div className="flex gap-2">
               {DURATIONS.map(d => (
                 <button
@@ -127,12 +171,12 @@ export default function VideoPage() {
         {/* Image input (optional) */}
         <div className="mb-4">
           <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">
-            Image de départ <span className="normal-case text-gray-700">(optionnel — Image to Video)</span>
+            Image de depart <span className="normal-case text-gray-700">(optionnel — Image to Video)</span>
           </label>
           <div className="border-2 border-dashed border-white/10 hover:border-white/20 rounded-xl p-6 text-center cursor-pointer transition-all">
             <Upload className="w-6 h-6 text-gray-600 mx-auto mb-2" />
             <p className="text-sm text-gray-600">Glissez une image ou cliquez pour choisir</p>
-            <p className="text-xs text-gray-700 mt-1">PNG, JPG jusqu'à 10 Mo</p>
+            <p className="text-xs text-gray-700 mt-1">PNG, JPG jusqu'a 10 Mo</p>
           </div>
         </div>
 
@@ -142,8 +186,8 @@ export default function VideoPage() {
           <div className="bg-white/5 border border-white/10 rounded-xl p-3 focus-within:border-violet-500/50 transition-all">
             <textarea
               value={prompt}
-              onChange={e => { setPrompt(e.target.value); setGenerated(false) }}
-              placeholder="Décrivez la vidéo… Ex : Un astronaute marchant sur la lune, caméra lente, ciel étoilé, ambiance cinématographique"
+              onChange={e => { setPrompt(e.target.value); setResult(null) }}
+              placeholder="Decrivez la video... Ex : Un astronaute marchant sur la lune, camera lente, ciel etoile"
               className="w-full bg-transparent text-sm text-white placeholder-gray-600 resize-none focus:outline-none min-h-[80px]"
               rows={3}
             />
@@ -159,24 +203,23 @@ export default function VideoPage() {
           {isGenerating ? (
             <>
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Génération en cours… ({duration})
+              Generation en cours... ({duration})
             </>
           ) : (
             <>
               <Film className="w-4 h-4" />
-              Générer la vidéo
+              Generer la video
             </>
           )}
         </button>
 
-        {/* Result placeholder */}
-        {generated && (
+        {/* Result */}
+        {result && (
           <div className="bg-black rounded-xl overflow-hidden border border-white/10 aspect-video flex items-center justify-center">
             <div className="text-center">
               <Video className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-              <p className="text-sm text-gray-400 font-medium">Vidéo générée ✓</p>
-              <p className="text-xs text-gray-600 mt-1">
-                Mode démo — Ajoutez votre clé {selectedProvider.name} pour les vraies vidéos
+              <p className="text-sm text-gray-400 font-medium">
+                {result === 'demo' ? 'Video generee (demo)' : result}
               </p>
             </div>
           </div>
@@ -184,10 +227,10 @@ export default function VideoPage() {
 
         {/* Info */}
         <div className="mt-6 bg-amber-500/5 border border-amber-500/20 rounded-xl p-4">
-          <p className="text-xs text-amber-400 font-medium mb-1">Note sur la génération vidéo</p>
+          <p className="text-xs text-amber-400 font-medium mb-1">Note sur la generation video</p>
           <p className="text-xs text-gray-500 leading-relaxed">
-            La génération vidéo est significativement plus longue (30s à plusieurs minutes) et plus coûteuse que les autres modalités.
-            Runway et Pika sont les leaders du marché. Les vidéos générées sont souvent de 5 à 10 secondes.
+            La generation video est significativement plus longue (30s a plusieurs minutes) et plus couteuse que les autres modalites.
+            Runway et Pika sont les leaders du marche. Les videos generees sont souvent de 5 a 10 secondes.
           </p>
         </div>
       </div>
