@@ -3,10 +3,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, Plus, Trash2, Settings2 } from 'lucide-react'
 import { useChatStore } from '@/stores/chat'
-import { useSettingsStore } from '@/stores/settings'
+import { useProvidersStore } from '@/stores/settings'
 import { MessageItem } from './MessageItem'
 import { ProviderSelector } from './ProviderSelector'
-import { TEXT_PROVIDERS } from '@/lib/providers/registry'
 import { getMockTextResponse, streamMockText } from '@/lib/mock/responses'
 import { cn } from '@/lib/utils'
 
@@ -36,8 +35,12 @@ export function ChatInterface() {
     getActiveConversation,
   } = useChatStore()
 
-  const { apiKeys } = useSettingsStore()
+  const { isAvailable, fetchProviders, loaded } = useProvidersStore()
   const activeConversation = getActiveConversation()
+
+  useEffect(() => {
+    if (!loaded) fetchProviders()
+  }, [loaded, fetchProviders])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -73,11 +76,10 @@ export function ChatInterface() {
     setLoading(true)
 
     try {
-      const providerKey = TEXT_PROVIDERS.find(p => p.id === selectedProvider)?.envKey
-      const hasKey = providerKey ? apiKeys[providerKey as keyof typeof apiKeys] : ''
+      const providerReady = isAvailable(selectedProvider)
 
-      if (!hasKey) {
-        // Mock mode
+      if (!providerReady) {
+        // Demo mode — provider not configured server-side
         const mockResponse = getMockTextResponse(selectedProvider)
         let accumulated = ''
         for await (const chunk of streamMockText(mockResponse)) {
@@ -85,7 +87,12 @@ export function ChatInterface() {
           updateMessage(convId, assistantId, accumulated)
         }
       } else {
-        // Real API call
+        // Real API call via our server proxy
+        const allMessages = (activeConversation?.messages || [])
+          .filter(m => !m.isStreaming && m.content)
+          .map(m => ({ role: m.role, content: m.content }))
+        allMessages.push({ role: 'user', content: userContent })
+
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -94,37 +101,47 @@ export function ChatInterface() {
             model: selectedModel,
             messages: [
               ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-              { role: 'user', content: userContent },
+              ...allMessages,
             ],
-            apiKey: hasKey,
           }),
         })
 
-        if (!res.ok) throw new Error(await res.text())
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }))
+          throw new Error(err.error || `Erreur ${res.status}`)
+        }
 
-        const reader = res.body?.getReader()
-        const decoder = new TextDecoder()
-        let accumulated = ''
+        // Check if streaming response
+        const contentType = res.headers.get('content-type') || ''
+        if (contentType.includes('text/event-stream')) {
+          const reader = res.body?.getReader()
+          const decoder = new TextDecoder()
+          let accumulated = ''
 
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            const chunk = decoder.decode(value, { stream: true })
-            const lines = chunk.split('\n')
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6)
-                if (data === '[DONE]') continue
-                try {
-                  const json = JSON.parse(data)
-                  const content = json.choices?.[0]?.delta?.content ?? ''
-                  accumulated += content
-                  updateMessage(convId, assistantId, accumulated)
-                } catch {}
+          if (reader) {
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              const chunk = decoder.decode(value, { stream: true })
+              const lines = chunk.split('\n')
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6)
+                  if (data === '[DONE]') continue
+                  try {
+                    const json = JSON.parse(data)
+                    const content = json.choices?.[0]?.delta?.content ?? ''
+                    accumulated += content
+                    updateMessage(convId, assistantId, accumulated)
+                  } catch { /* skip malformed chunks */ }
+                }
               }
             }
           }
+        } else {
+          // Non-streaming JSON response
+          const data = await res.json()
+          updateMessage(convId, assistantId, data.content || JSON.stringify(data))
         }
       }
     } catch (err) {
@@ -147,6 +164,8 @@ export function ChatInterface() {
     e.target.style.height = 'auto'
     e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px'
   }
+
+  const providerActive = isAvailable(selectedProvider)
 
   return (
     <div className="flex h-screen">
@@ -198,18 +217,25 @@ export function ChatInterface() {
             onProviderChange={setSelectedProvider}
             onModelChange={setSelectedModel}
           />
-          <button
-            onClick={() => setShowSystemPrompt(!showSystemPrompt)}
-            className={cn(
-              'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-all',
-              showSystemPrompt
-                ? 'bg-white/10 border-white/20 text-white'
-                : 'border-white/10 text-gray-500 hover:text-white hover:border-white/20'
+          <div className="flex items-center gap-2">
+            {!providerActive && loaded && (
+              <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg">
+                Demo
+              </span>
             )}
-          >
-            <Settings2 className="w-3.5 h-3.5" />
-            Système
-          </button>
+            <button
+              onClick={() => setShowSystemPrompt(!showSystemPrompt)}
+              className={cn(
+                'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-all',
+                showSystemPrompt
+                  ? 'bg-white/10 border-white/20 text-white'
+                  : 'border-white/10 text-gray-500 hover:text-white hover:border-white/20'
+              )}
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              Systeme
+            </button>
+          </div>
         </div>
 
         {/* System prompt */}
@@ -218,7 +244,7 @@ export function ChatInterface() {
             <textarea
               value={systemPrompt}
               onChange={e => setSystemPrompt(e.target.value)}
-              placeholder="Prompt système (ex : Tu es un expert en Python. Réponds toujours en français.)"
+              placeholder="Prompt systeme (ex : Tu es un expert en Python. Reponds toujours en francais.)"
               className="w-full bg-transparent text-xs text-gray-300 placeholder-gray-600 resize-none focus:outline-none"
               rows={2}
             />
@@ -230,18 +256,17 @@ export function ChatInterface() {
           {!activeConversation || activeConversation.messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center">
               <div className="w-16 h-16 bg-gradient-to-br from-violet-500/20 to-cyan-500/20 border border-white/10 rounded-2xl flex items-center justify-center mb-4">
-                <span className="text-2xl">✦</span>
+                <span className="text-2xl">&#10022;</span>
               </div>
-              <h2 className="text-lg font-semibold text-white mb-1">Que voulez-vous créer ?</h2>
+              <h2 className="text-lg font-semibold text-white mb-1">Que voulez-vous faire ?</h2>
               <p className="text-sm text-gray-500 max-w-sm">
-                Sélectionnez un provider ci-dessus et commencez à écrire.{' '}
-                <span className="text-gray-600">Mode démo actif — ajoutez vos clés dans Paramètres.</span>
+                Selectionnez un provider ci-dessus et commencez a ecrire.
               </p>
               <div className="grid grid-cols-2 gap-2 mt-6 max-w-md">
                 {[
                   'Explique le machine learning simplement',
-                  'Écris un composant React en TypeScript',
-                  'Résume les actualités IA du moment',
+                  'Ecris un composant React en TypeScript',
+                  'Resume les actualites IA du moment',
                   'Traduis ce texte en anglais',
                 ].map(suggestion => (
                   <button
@@ -270,7 +295,7 @@ export function ChatInterface() {
               value={input}
               onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
-              placeholder="Écrivez votre message… (Entrée pour envoyer, Maj+Entrée pour sauter une ligne)"
+              placeholder="Ecrivez votre message... (Entree pour envoyer, Maj+Entree pour sauter une ligne)"
               className="flex-1 bg-transparent text-sm text-white placeholder-gray-600 resize-none focus:outline-none min-h-[24px] max-h-[200px]"
               rows={1}
             />
@@ -282,9 +307,6 @@ export function ChatInterface() {
               <Send className="w-3.5 h-3.5 text-white" />
             </button>
           </div>
-          <p className="text-[10px] text-gray-700 text-center mt-2">
-            Mode démo — Les réponses sont simulées. Ajoutez vos clés API dans Paramètres pour activer.
-          </p>
         </div>
       </div>
     </div>

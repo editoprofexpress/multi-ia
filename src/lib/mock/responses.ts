@@ -1,26 +1,26 @@
-// Mock responses for demo mode (no API keys needed)
+// Mock responses for demo mode (provider not configured on the server)
 
 export const MOCK_TEXT_RESPONSES: Record<string, string[]> = {
   default: [
-    "Bonjour ! Je suis en mode démo. Connectez votre clé API dans les **Paramètres** pour activer les vraies réponses.\n\nEn attendant, je peux simuler une conversation complète avec streaming, markdown, et code :\n\n```python\ndef hello_world():\n    print(\"Hello from AI Hub!\")\n    return True\n```\n\nL'interface supporte le **markdown**, les `blocs de code`, les listes, et plus encore.",
-    "Voici une réponse simulée avec du contenu riche :\n\n## Fonctionnalités disponibles\n\n- **Chat** multi-providers avec streaming\n- **Images** : DALL-E, Stable Diffusion, Flux...\n- **Vidéo** : Runway, Pika Labs\n- **Audio** : ElevenLabs, OpenAI TTS\n- **Recherche** : SerpAPI, Perplexity\n\nAjoutez vos clés API dans ⚙️ Paramètres pour tout activer !",
-    "En mode démo, toutes les fonctionnalités sont simulées.\n\nPour activer ce provider :\n1. Allez dans **Paramètres** (icône ⚙️)\n2. Entrez votre clé API\n3. Revenez ici et relancez votre message\n\nVos clés sont stockées **localement** dans votre navigateur et ne transitent jamais sur un serveur tiers.",
+    "Bonjour ! Je suis en mode demo. Voici un apercu de ce que cette IA pourra faire une fois activee.\n\nL'interface supporte le **markdown**, les `blocs de code`, les listes, et plus encore :\n\n```python\ndef hello_world():\n    print(\"Hello from AI Hub!\")\n    return True\n```\n\nUne fois le service actif, vous beneficierez de reponses completes et en temps reel.",
+    "Voici une reponse simulee avec du contenu riche :\n\n## Fonctionnalites disponibles\n\n- **Chat** multi-providers avec streaming\n- **Images** : DALL-E, Stable Diffusion, Flux...\n- **Video** : Runway, Pika Labs\n- **Audio** : ElevenLabs, OpenAI TTS\n- **Recherche** : SerpAPI, Perplexity\n\nToutes ces fonctionnalites seront accessibles dans la version complete !",
+    "En mode demo, toutes les fonctionnalites sont simulees.\n\nDans la version complete, chaque provider sera operationnel avec des reponses en temps reel, du streaming, et un historique complet de vos conversations.\n\nN'hesitez pas a explorer toutes les sections de l'application !",
   ],
   openai: [
-    "Je suis GPT-4o en mode démo. Avec une vraie clé API, je répondrai avec la puissance complète d'OpenAI : raisonnement avancé, vision, génération de code, et plus encore.",
+    "Je suis GPT-4o en mode demo. Dans la version complete, je pourrai vous aider avec le raisonnement avance, la vision, la generation de code, et bien plus encore.",
   ],
   anthropic: [
-    "Je suis Claude en mode démo. Avec une vraie clé API Anthropic, je serai disponible pour des tâches complexes d'analyse, de rédaction et de programmation.",
+    "Je suis Claude en mode demo. Dans la version complete, je serai disponible pour des taches complexes d'analyse, de redaction et de programmation.",
   ],
   deepseek: [
-    "Je suis DeepSeek en mode démo. DeepSeek R1 est particulièrement fort en raisonnement mathématique et en code. Ajoutez votre clé API pour en profiter.",
+    "Je suis DeepSeek en mode demo. DeepSeek R1 est particulierement fort en raisonnement mathematique et en code.",
   ],
 }
 
 export const MOCK_IMAGE_URLS = [
-  'https://placehold.co/1024x1024/1a1a2e/ffffff?text=Image+IA+%E2%80%94+D%C3%A9mo',
-  'https://placehold.co/1024x1024/16213e/4fc3f7?text=Ajoutez+votre+cl%C3%A9+API',
-  'https://placehold.co/1024x1024/0f3460/e94560?text=Image+g%C3%A9n%C3%A9r%C3%A9e+par+IA',
+  'https://placehold.co/1024x1024/1a1a2e/ffffff?text=Image+IA+Demo',
+  'https://placehold.co/1024x1024/16213e/4fc3f7?text=Generation+IA',
+  'https://placehold.co/1024x1024/0f3460/e94560?text=Image+generee',
 ]
 
 export function getMockTextResponse(providerId: string): string {

@@ -8,7 +8,6 @@ import {
   Video,
   Music,
   Search,
-  Settings,
   Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -16,7 +15,7 @@ import { cn } from '@/lib/utils'
 const NAV_ITEMS = [
   { href: '/chat', icon: MessageSquare, label: 'Chat', description: '11 providers' },
   { href: '/image', icon: Image, label: 'Images', description: '9 providers' },
-  { href: '/video', icon: Video, label: 'Vidéo', description: '2 providers' },
+  { href: '/video', icon: Video, label: 'Video', description: '2 providers' },
   { href: '/audio', icon: Music, label: 'Audio', description: '2 providers' },
   { href: '/search', icon: Search, label: 'Recherche', description: '2 providers' },
 ]
@@ -28,7 +27,7 @@ export function Sidebar() {
     <aside className="w-[220px] flex-shrink-0 bg-[#0d0d0d] border-r border-white/5 flex flex-col h-screen sticky top-0">
       {/* Logo */}
       <div className="px-4 py-5 border-b border-white/5">
-        <div className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-cyan-500 rounded-lg flex items-center justify-center">
             <Zap className="w-4 h-4 text-white" />
           </div>
@@ -36,7 +35,7 @@ export function Sidebar() {
             <p className="text-sm font-bold text-white">AI Hub</p>
             <p className="text-[10px] text-gray-500">25+ providers</p>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Navigation */}
@@ -67,23 +66,11 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Settings */}
-      <div className="px-2 py-4 border-t border-white/5">
-        <Link
-          href="/settings"
-          className={cn(
-            'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all',
-            pathname.startsWith('/settings')
-              ? 'bg-white/10 text-white'
-              : 'text-gray-400 hover:text-white hover:bg-white/5'
-          )}
-        >
-          <Settings className="w-4 h-4" />
-          <div>
-            <p className="text-sm font-medium">Paramètres</p>
-            <p className="text-[10px] text-gray-600">Clés API</p>
-          </div>
-        </Link>
+      {/* Footer */}
+      <div className="px-4 py-3 border-t border-white/5">
+        <p className="text-[10px] text-gray-700 text-center">
+          Propulse par +DE
+        </p>
       </div>
     </aside>
   )
